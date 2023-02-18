@@ -4,12 +4,20 @@ from passlib.hash import sha256_crypt
 import pymysql
 import boto3
 import os
+import uuid
 
 # constants
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
-SQL_INSERT_USER = "INSERT INTO users (name, email, password, photo_url) VALUES (%s, %s, %s, %s)"
+SQL_INSERT_USER = "INSERT INTO users (uid, name, email, password, photo_url) VALUES (%s, %s, %s, %s, %s)"
 SQL_CHECK_IF_USER_EXISTS = "SELECT * FROM users WHERE email = %s"
 SQL_GET_USER_PASSWORD_HASH = "SELECT password FROM users WHERE email = %s"
+SQL_GET_TRIPS = "SELECT * FROM trips WHERE uid = %s"
+SQL_GET_TRIP = "SELECT * FROM trips WHERE id = %s"
+SQL_INSERT_TRIP = "INSERT INTO trips (id, uid, place_name, start_date, end_date, flight_number_arrival, flight_number_departure, hotel_name, hotel_address, hotel_phone) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+SQL_UPDATE_TRIP = "UPDATE trips SET place_name = %s, start_date = %s, end_date = %s, flight_number_arrival = %s, flight_number_departure = %s, hotel_name = %s, hotel_address = %s, hotel_phone = %s WHERE id = %s"
+SQL_GET_PLACES_TO_VISIT = "SELECT * FROM places_to_visit WHERE trip_id = %s"
+SQL_INSERT_PLACES_TO_VISIT = "INSERT INTO places_to_visit (id, trip_id, uid, name, note) VALUES (%s, %s, %s, %s, %s)"
+SQL_UPDATE_PLACES_TO_VISIT = "UPDATE places_to_visit SET name = %s, note = %s WHERE id = %s"
 
 app = Flask(__name__)
 
@@ -21,9 +29,8 @@ db = pymysql.connect(
     ssl_ca='my-cluster-ca-certificate.crt',
     db='wander_xp',
 )
-cursor = db.cursor()
 
-
+# Registering a new user
 @app.route("/register", methods=['POST'])
 def register():
     data = request.get_json()
@@ -32,7 +39,10 @@ def register():
     if is_already_registered:
         return jsonify({'message': 'You are already registered'})
 
+    cursor = db.cursor()
+
     # Create user object to insert into SQL
+    uid = str(uuid.uuid4())
     name = data['name']
     email = data['email']
     password = data['password']
@@ -43,7 +53,7 @@ def register():
         try:
             # Store user in SQL
             cursor.execute(SQL_INSERT_USER,
-                           (name, email, hashed_pass, photo_url))
+                           (uid, name, email, hashed_pass, photo_url))
             db.commit()
         except:
             return jsonify({
@@ -54,12 +64,13 @@ def register():
             'status': 'ERROR',
             'message': 'Please fill in all fields'})
 
-    db.close()
+    cursor.close()
     return jsonify({
         'status': 'SUCCESS',
         'message': 'Account created successfully!'})
 
 
+# Logging in a user
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -69,8 +80,10 @@ def login():
 
     if email != '' and password != '':
         try:
+            cursor = db.cursor()
             cursor.execute(SQL_GET_USER_PASSWORD_HASH, (email))
             results = cursor.fetchall()
+            cursor.close()
 
             if len(results) > 0:
                 if sha256_crypt.verify(password, results[0][0]):
@@ -92,10 +105,151 @@ def login():
             'status': 'ERROR',
             'message': 'Please fill in all fields'})
 
+# Fetching a trip by id
+@app.route('/trips/<trip_id>', methods=['GET'])
+def get_trip(trip_id):
+    if trip_id == '':
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Please provide a valid trip id'})
+    try:
+        cursor = db.cursor()
+        cursor.execute(SQL_GET_TRIP, (trip_id))
+        result = cursor.fetchall()[0]
+        trip = {
+            'id': result[0],
+            'uid': result[1],
+            'place_name': result[2],
+            'start_date': result[3],
+            'end_date': result[4],
+            'flight_number_arrival': result[5],
+            'flight_number_departure': result[6],
+            'hotel_name': result[7],
+            'hotel_address': result[8],
+            'hotel_phone': result[9],
+        }
+        cursor.execute(SQL_GET_PLACES_TO_VISIT, (trip_id))
+        places_to_visit_list = cursor.fetchall()
+        places_to_visit = []
+        for row in places_to_visit_list:
+            places_to_visit.append({
+                'id': row[0],
+                'trip_id': row[1],
+                'uid': row[2],
+                'name': row[3],
+                'note': row[4]
+            })
+        trip['places_to_visit'] = places_to_visit
+        cursor.close()
+        return jsonify({'status': 'SUCCESS', 'trip': trip})
+    except:
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Failed to fetch trip!'})
+
+# Updating a trip by id
+@app.route('/trips/<trip_id>/update', methods=['POST'])
+def update_trip(trip_id):
+    data = request.get_json()
+    if trip_id == '':
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Please provide a valid trip id'})
+    try:
+        cursor = db.cursor()
+        cursor.execute(SQL_UPDATE_TRIP,
+                       (data['place_name'], data['start_date'],
+                        data['end_date'], data['flight_number_arrival'],
+                        data['flight_number_departure'], data['hotel_name'],
+                        data['hotel_address'], data['hotel_phone'], trip_id))
+        db.commit()
+        cursor.close()
+        return jsonify({'status': 'SUCCESS', 'message': 'Trip updated!', 'trip_id': trip_id})
+    except:
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Failed to update trip!'})
+
+### @GET: Fetching all trips for a user
+### @POST: Creating a new trip for a user
+@app.route('/trips', methods=['GET', 'POST'])
+def trips():
+    data = request.get_json()
+    if request.method == 'GET':
+        uid = data['uid']
+        if (uid == ''):
+            return jsonify({
+                'status': 'ERROR',
+                'message': 'Please provide a valid user id'})
+        try:
+            cursor = db.cursor()
+            cursor.execute(SQL_GET_TRIPS, (uid))
+            results = cursor.fetchall()
+            cursor.close()
+            trips = []
+            for row in results:
+                trips.append({
+                    'id': row[0],
+                    'uid': row[1],
+                    'place_name': row[2],
+                    'start_date': row[3],
+                    'end_date': row[4],
+                    'flight_number_arrival': row[5],
+                    'flight_number_departure': row[6],
+                    'hotel_name': row[7],
+                    'hotel_address': row[8],
+                    'hotel_phone': row[9],
+                })
+
+            return jsonify({'status': 'SUCCESS', 'trips': trips})
+        except:
+            return jsonify({
+                'status': 'ERROR',
+                'message': 'Failed to fetch trips!'})
+    elif request.method == 'POST':
+        uid = data['uid']
+        trips = data['trips']
+        trip_id = str(uuid.uuid4())
+        if (uid == '' and trips == None):
+            return jsonify({
+                'status': 'ERROR',
+                'message': 'Please provide a valid user id and trip details'
+            })
+        # trip details
+        place_name = trips['place_name']
+        start_date = trips['start_date']
+        end_date = trips['end_date']
+        flight_number_arrival = trips['flight_number_arrival']
+        flight_number_departure = trips['flight_number_departure']
+        hotel_name = trips['hotel_name']
+        hotel_address = trips['hotel_address']
+        hotel_phone = trips['hotel_phone']
+        places_to_visit_id = str(uuid.uuid4())
+        # places to visit
+        places_to_visit_name = trips['places_to_visit'][0]['name']
+        places_to_visit_note = trips['places_to_visit'][0]['note']
+        cursor = db.cursor()
+        # Store trip in SQL
+        cursor.execute(SQL_INSERT_TRIP,
+                       (trip_id, uid, place_name, start_date, end_date,
+                        flight_number_arrival, flight_number_departure,
+                        hotel_name, hotel_address, hotel_phone))
+        db.commit()
+        cursor.execute(SQL_INSERT_PLACES_TO_VISIT,
+                       (places_to_visit_id,
+                        trip_id,
+                        uid,
+                        places_to_visit_name,
+                        places_to_visit_note))
+        db.commit()
+        return jsonify({
+            'status': 'SUCCESS', 'message': 'Trip created successfully!', 'trip_id': trip_id})
+
 
 # Check if username or email are already taken
 def user_exists(email):
     try:
+        cursor = db.cursor()
         # Store user in SQL
         cursor.execute(SQL_CHECK_IF_USER_EXISTS, (email))
         results = cursor.fetchall()
@@ -112,8 +266,7 @@ def user_exists(email):
 s3 = boto3.client(
     's3',
     aws_access_key_id='access_key',
-    aws_secret_access_key='secret_key'
-)
+    aws_secret_access_key='secret_key')
 
 
 @app.route('/')

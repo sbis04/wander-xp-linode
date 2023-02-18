@@ -23,8 +23,6 @@ db = pymysql.connect(
 )
 cursor = db.cursor()
 
-# TODO: Add proper user authentication with the SQL DB
-
 
 @app.route("/register", methods=['POST'])
 def register():
@@ -71,11 +69,9 @@ def login():
         return jsonify({'message': 'User does not exist!'})
 
 
-@app.route("/logout")
-def logout():
-    logout_user()
-    flash('Logged out!', 'success')
-    return redirect(url_for('index'))
+# @app.route("/logout")
+# def logout():
+#     return jsonify({'message': 'Logged out successfully!'})
 
 
 # Check if username or email are already taken

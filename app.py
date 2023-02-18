@@ -5,41 +5,47 @@ import pymysql
 import boto3
 import os
 
+# constants
+DB_PASSWORD = os.environ.get('DB_PASSWORD')
+SQL_INSERT_USER = "INSERT INTO users (name, email, password, photo_url) VALUES (%s, %s, %s, %s)"
+SQL_CHECK_IF_USER_EXISTS = "SELECT * FROM users WHERE email = %s"
+
 app = Flask(__name__)
 
 # Connect to Linode's managed database
-conn = pymysql.connect(
+db = pymysql.connect(
     host='lin-16251-9474-mysql-primary-private.servers.linodedb.net',
     user='linroot',
-    password=os.environ.get('DB_PASSWORD'),
+    password=DB_PASSWORD,
     ssl_ca='my-cluster-ca-certificate.crt',
     db='wander_xp',
 )
+cursor = db.cursor()
 
 # TODO: Add proper user authentication with the SQL DB
+
+
 @app.route("/register", methods=['POST'])
 def register():
+    data = request.get_json()
+
+    is_already_registered = user_exists(data['email'])
+    if is_already_registered:
+        return jsonify({'message': 'You are already registered'})
+
     # Create user object to insert into SQL
-    passwd1 = request.form.get('password1')
-    hashed_pass = sha256_crypt.encrypt(str(passwd1))
+    password = data['password']
+    hashed_pass = sha256_crypt.encrypt(str(password))
 
-    new_user = User(
-        username=request.form.get('username'),
-        email=request.form.get('username'),
-        password=hashed_pass)
+    try:
+        # Store user in SQL
+        cursor.execute(
+            SQL_INSERT_USER, (data['name'], data['email'], data['message'], data['photo_url']))
+        db.commit()
+    except:
+        db.rollback()
 
-    if user_exsists(new_user.username, new_user.email):
-        flash('User already exsists!', 'danger')
-        return render_template('register.html')
-    else:
-        # Insert new user into SQL
-        db.session.add(new_user)
-        db.session.commit()
-
-        login_user(new_user)
-
-        flash('Account created!', 'success')
-        return redirect(url_for('index'))
+    db.close()
 
 
 @app.route('/login', methods=['POST'])
@@ -69,15 +75,18 @@ def logout():
 
 
 # Check if username or email are already taken
-def user_exsists(username, email):
-    # Get all Users in SQL
-    users = User.query.all()
-    for user in users:
-        if username == user.username or email == user.email:
-            return True
-
-    # No matching user
-    return False
+def user_exists(email):
+    try:
+        # Store user in SQL
+        cursor.execute(SQL_CHECK_IF_USER_EXISTS, (email))
+        results = cursor.fetchall()
+    except:
+        db.rollback()
+    
+    if len(results) > 0:
+        return True
+    else:
+        return False
 
 
 # Connect to Linode's object storage
@@ -95,11 +104,11 @@ def index():
 @app.route('/store_data', methods=['POST'])
 def store_data():
     data = request.get_json()
-    cursor = conn.cursor()
+    cursor = db.cursor()
     # Store data in Linode's managed database
     sql = "INSERT INTO data (name, email, message) VALUES (%s, %s, %s)"
     cursor.execute(sql, (data['name'], data['email'], data['message']))
-    conn.commit()
+    db.commit()
     # Store relevant photos and documents in Linode's object storage
     if 'photo' in data:
         s3.upload_file(data['photo'], 'bucket_name', 'photo.jpg')
@@ -110,7 +119,7 @@ def store_data():
 
 @app.route('/get_data', methods=['GET'])
 def get_data():
-    cursor = conn.cursor()
+    cursor = db.cursor()
     # Retrieve data from Linode's managed database
     sql = "SELECT * FROM data"
     cursor.execute(sql)

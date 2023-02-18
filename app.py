@@ -9,6 +9,7 @@ import os
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
 SQL_INSERT_USER = "INSERT INTO users (name, email, password, photo_url) VALUES (%s, %s, %s, %s)"
 SQL_CHECK_IF_USER_EXISTS = "SELECT * FROM users WHERE email = %s"
+SQL_GET_USER_PASSWORD_HASH = "SELECT password FROM users WHERE email = %s"
 
 app = Flask(__name__)
 
@@ -34,37 +35,40 @@ def register():
         return jsonify({'message': 'You are already registered'})
 
     # Create user object to insert into SQL
+    name = data['name']
+    email = data['email']
     password = data['password']
+    photo_url = data['photo_url']
     hashed_pass = sha256_crypt.encrypt(str(password))
 
     try:
         # Store user in SQL
-        cursor.execute(
-            SQL_INSERT_USER, (data['name'], data['email'], data['message'], data['photo_url']))
+        cursor.execute(SQL_INSERT_USER, (name, email, hashed_pass, photo_url))
         db.commit()
     except:
         db.rollback()
 
     db.close()
+    return jsonify({'message': 'Account created successfully!'})
 
 
 @app.route('/login', methods=['POST'])
 def login():
-    username = request.form.get('username')
-    password_candidate = request.form.get('password')
+    data = request.get_json()
 
-    # Query for a user with the provided username
-    result = User.query.filter_by(username=username).first()
+    email = data['email']
+    password = data['password']
 
-    # If a user exsists and passwords match - login
-    if result is not None and sha256_crypt.verify(password_candidate, result.password):
-        # Init session vars
-        login_user(result)
-        flash('Logged in!', 'success')
-        return redirect(url_for('index'))
+    cursor.execute(SQL_GET_USER_PASSWORD_HASH, (email))
+    results = cursor.fetchall()
+
+    if len(results) > 0:
+        if sha256_crypt.verify(password, results[0][0]):
+            return jsonify({'message': 'Logged in successfully!'})
+        else:
+            return jsonify({'message': 'Incorrect password!'})
     else:
-        flash('Incorrect Login!', 'danger')
-        return render_template('login.html')
+        return jsonify({'message': 'User does not exist!'})
 
 
 @app.route("/logout")
@@ -82,7 +86,7 @@ def user_exists(email):
         results = cursor.fetchall()
     except:
         db.rollback()
-    
+
     if len(results) > 0:
         return True
     else:

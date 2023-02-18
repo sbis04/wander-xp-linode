@@ -39,15 +39,25 @@ def register():
     photo_url = data['photo_url']
     hashed_pass = sha256_crypt.encrypt(str(password))
 
-    try:
-        # Store user in SQL
-        cursor.execute(SQL_INSERT_USER, (name, email, hashed_pass, photo_url))
-        db.commit()
-    except:
-        db.rollback()
+    if name != '' and email != '' and password != '':
+        try:
+            # Store user in SQL
+            cursor.execute(SQL_INSERT_USER,
+                           (name, email, hashed_pass, photo_url))
+            db.commit()
+        except:
+            return jsonify({
+                'status': 'ERROR',
+                'message': 'Failed to create account'})
+    else:
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Please fill in all fields'})
 
     db.close()
-    return jsonify({'message': 'Account created successfully!'})
+    return jsonify({
+        'status': 'SUCCESS',
+        'message': 'Account created successfully!'})
 
 
 @app.route('/login', methods=['POST'])
@@ -57,21 +67,30 @@ def login():
     email = data['email']
     password = data['password']
 
-    cursor.execute(SQL_GET_USER_PASSWORD_HASH, (email))
-    results = cursor.fetchall()
+    if email != '' and password != '':
+        try:
+            cursor.execute(SQL_GET_USER_PASSWORD_HASH, (email))
+            results = cursor.fetchall()
 
-    if len(results) > 0:
-        if sha256_crypt.verify(password, results[0][0]):
-            return jsonify({'message': 'Logged in successfully!'})
-        else:
-            return jsonify({'message': 'Incorrect password!'})
+            if len(results) > 0:
+                if sha256_crypt.verify(password, results[0][0]):
+                    return jsonify({
+                        'status': 'SUCCESS',
+                        'message': 'Logged in successfully!'})
+                else:
+                    return jsonify({
+                        'status': 'ERROR',
+                        'message': 'Incorrect password!'})
+            else:
+                return jsonify({'message': 'User does not exist!'})
+        except:
+            return jsonify({
+                'status': 'ERROR',
+                'message': 'Failed to login!'})
     else:
-        return jsonify({'message': 'User does not exist!'})
-
-
-# @app.route("/logout")
-# def logout():
-#     return jsonify({'message': 'Logged out successfully!'})
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Please fill in all fields'})
 
 
 # Check if username or email are already taken
@@ -90,10 +109,11 @@ def user_exists(email):
 
 
 # Connect to Linode's object storage
-s3 = boto3.client('s3',
-                  aws_access_key_id='access_key',
-                  aws_secret_access_key='secret_key'
-                  )
+s3 = boto3.client(
+    's3',
+    aws_access_key_id='access_key',
+    aws_secret_access_key='secret_key'
+)
 
 
 @app.route('/')

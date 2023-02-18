@@ -1,0 +1,5 @@
+flask
+pymysql
+boto3
+os
+passlib.hash

@@ -8,6 +8,10 @@ import uuid
 
 # constants
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
+OBJECT_STORAGE_KEY_ID = os.environ.get('OBJECT_STORAGE_KEY_ID')
+OBJECT_STORAGE_KEY_SECRET = os.environ.get('OBJECT_STORAGE_KEY_SECRET')
+OBJECT_STORAGE_CLUSTER_URL = "wander-xp-files.ap-south-1.linodeobjects.com"
+BUCKET_NAME = "wander-xp-files"
 SQL_INSERT_USER = "INSERT INTO users (uid, name, email, password, photo_url) VALUES (%s, %s, %s, %s, %s)"
 SQL_CHECK_IF_USER_EXISTS = "SELECT * FROM users WHERE email = %s"
 SQL_GET_USER_PASSWORD_HASH = "SELECT password FROM users WHERE email = %s"
@@ -263,10 +267,46 @@ def user_exists(email):
 
 
 # Connect to Linode's object storage
-s3 = boto3.client(
-    's3',
-    aws_access_key_id='access_key',
-    aws_secret_access_key='secret_key')
+linode_obj_config = {
+    "aws_access_key_id": OBJECT_STORAGE_KEY_ID,
+    "aws_secret_access_key": OBJECT_STORAGE_KEY_SECRET,
+    "endpoint_url": OBJECT_STORAGE_CLUSTER_URL,
+}
+s3 = boto3.client('s3',**linode_obj_config)
+s3 = boto3.resource('s3')
+
+@app.route('/store_file', methods=['POST'])
+def store_file():
+    data = request.get_json()
+    # Need to pass file, file_name, file_type
+    if 'file' in data:
+        unique_str = str(uuid.uuid4())
+        file_name = data['file_name'] + f"_{unique_str}"+ '.' + data['file_type']
+        try:
+            s3.upload_file(data['file'], BUCKET_NAME, file_name)
+            return jsonify({
+                'status': 'SUCCESS',
+                'message': 'File stored successfully!', 'file_name': file_name})
+        except:
+            return jsonify({
+                'status': 'ERROR',
+                'message': 'Failed to store file!'})
+
+@app.route('/get_file', methods=['GET'])
+def get_file():
+    data = request.get_json()
+    # Need to pass file_name
+    if 'file_name' in data:
+        try:
+            file = s3.download_file(BUCKET_NAME, data['file_name'], data['file_name'])
+            return jsonify({
+                'status': 'SUCCESS',
+                'message': 'File retrieved successfully!', 'file_name': data['file_name'], 'file': file})
+        except:
+            return jsonify({
+                'status': 'ERROR',
+                'message': 'Failed to retrieve file!'})
+
 
 
 @app.route('/')

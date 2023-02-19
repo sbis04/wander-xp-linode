@@ -6,12 +6,14 @@ import boto3
 import os
 import uuid
 
-# constants
+# environment variables
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
 OBJECT_STORAGE_KEY_ID = os.environ.get('OBJECT_STORAGE_KEY_ID')
 OBJECT_STORAGE_KEY_SECRET = os.environ.get('OBJECT_STORAGE_KEY_SECRET')
+# Object storage configuration
 OBJECT_STORAGE_CLUSTER_URL = "wander-xp-files.ap-south-1.linodeobjects.com"
 BUCKET_NAME = "wander-xp-files"
+# SQL queries
 SQL_INSERT_USER = "INSERT INTO users (uid, name, email, password, photo_url) VALUES (%s, %s, %s, %s, %s)"
 SQL_CHECK_IF_USER_EXISTS = "SELECT * FROM users WHERE email = %s"
 SQL_GET_USER_PASSWORD_HASH = "SELECT password FROM users WHERE email = %s"

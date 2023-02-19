@@ -1,0 +1,12 @@
+country,city,zip,image_url
+USA,New York,10001,https://upload.wikimedia.org/wikipedia/commons/9/9a/New_York_City_top_view.jpg
+USA,Los Angeles,90001,https://upload.wikimedia.org/wikipedia/commons/9/9d/Los_Angeles%2C_California_%28Unsplash%29.jpg
+USA,Chicago,60601,https://upload.wikimedia.org/wikipedia/commons/e/ee/Chicago_skyline_at_dusk.jpg
+Canada,Toronto,M5V 2A1,https://upload.wikimedia.org/wikipedia/commons/7/73/Toronto_skyline_2011.jpg
+Canada,Vancouver,V6B 4Y8,https://upload.wikimedia.org/wikipedia/commons/8/8d/Vancouver_bc_harbor.jpg
+India,Mumbai,400001,https://upload.wikimedia.org/wikipedia/commons/6/66/Mumbai_Skyline_with_Banganga_Tank_and_Kapur_Baug.jpg
+India,Delhi,110001,https://upload.wikimedia.org/wikipedia/commons/3/3e/Humayuns_tomb_from_the_charbagh.JPG
+Australia,Sydney,2000,https://upload.wikimedia.org/wikipedia/commons/6/65/Sydney_Opera_House_and_Harbour_Bridge_Dusk_%2834496014022%29.jpg
+Australia,Melbourne,3000,https://upload.wikimedia.org/wikipedia/commons/6/6d/Melbourne_CBD_skyline_at_dusk_%28cropped%29.jpg
+France,Paris,75001,https://upload.wikimedia.org/wikipedia/commons/4/4e/Paris_-_Eiffelturm_und_Marsfeld2.jpg
+France,Marseille,13001,https://upload.wikimedia.org/wikipedia/commons/9/9d/Palais_Longchamp_Marseille.jpg

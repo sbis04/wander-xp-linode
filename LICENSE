@@ -1,8 +1,4 @@
-# WanderXP REST API
-
-REST API build using Flask for communicating with the Linode managed database and object storage.
-
-## License
+MIT License
 
 Copyright (c) 2023 Souvik Biswas
 

@@ -1,7 +1,2 @@
-# Linode Flask app
-
-run with :
-
-```
-python3 app.py
-```
+# Wander XP Flask App
+> Uses Linode SQL Managed database and Object Storage

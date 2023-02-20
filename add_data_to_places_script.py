@@ -7,6 +7,8 @@ import pymysql
 import boto3
 import os
 
+DB_PASSWORD = os.environ.get('DB_PASSWORD')
+
 # Connect to Linode's managed database
 db = pymysql.connect(
     host='lin-16251-9474-mysql-primary-private.servers.linodedb.net',
@@ -25,9 +27,9 @@ with open('filename.csv', mode='r') as csv_file:
     # Iterate over each row in the CSV file
     for row in csv_reader:
         data = request.get_json()
-        cursor = conn.cursor()
+        cursor = db.cursor()
         # Store data in Linode's managed database
         sql = "INSERT INTO places (country, city, zip, image_url) VALUES (%s, %s, %s, %s)"
         cursor.execute(sql, (row["country"], row["city"], row["zip"], row["image_url"]))
-        conn.commit()
+        db.commit()
 

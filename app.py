@@ -11,11 +11,11 @@ DB_PASSWORD = os.environ.get('DB_PASSWORD')
 OBJECT_STORAGE_KEY_ID = os.environ.get('OBJECT_STORAGE_KEY_ID')
 OBJECT_STORAGE_KEY_SECRET = os.environ.get('OBJECT_STORAGE_KEY_SECRET')
 # Object storage configuration
-OBJECT_STORAGE_CLUSTER_URL = "wander-xp-files.ap-south-1.linodeobjects.com"
+OBJECT_STORAGE_CLUSTER_URL = "https://ap-south-1.linodeobjects.com"
 BUCKET_NAME = "wander-xp-files"
 # SQL queries
 SQL_INSERT_USER = "INSERT INTO users (uid, name, email, password, photo_url) VALUES (%s, %s, %s, %s, %s)"
-SQL_CHECK_IF_USER_EXISTS = "SELECT * FROM users WHERE email = %s"
+SQL_GET_USER = "SELECT * FROM users WHERE email = %s"
 SQL_GET_USER_PASSWORD_HASH = "SELECT password FROM users WHERE email = %s"
 SQL_GET_TRIPS = "SELECT * FROM trips WHERE uid = %s"
 SQL_GET_TRIP = "SELECT * FROM trips WHERE id = %s"
@@ -24,6 +24,8 @@ SQL_UPDATE_TRIP = "UPDATE trips SET place_name = %s, start_date = %s, end_date =
 SQL_GET_PLACES_TO_VISIT = "SELECT * FROM places_to_visit WHERE trip_id = %s"
 SQL_INSERT_PLACES_TO_VISIT = "INSERT INTO places_to_visit (id, trip_id, uid, name, note) VALUES (%s, %s, %s, %s, %s)"
 SQL_UPDATE_PLACES_TO_VISIT = "UPDATE places_to_visit SET name = %s, note = %s WHERE id = %s"
+SQL_GET_PLACES = "SELECT * FROM places"
+SQL_GET_PLACE = "SELECT * FROM places WHERE city = %s"
 
 app = Flask(__name__)
 
@@ -43,7 +45,9 @@ def register():
 
     is_already_registered = user_exists(data['email'])
     if is_already_registered:
-        return jsonify({'message': 'You are already registered'})
+        return jsonify({
+            'status':'ERROR',
+            'message': 'You are already registered'})
 
     cursor = db.cursor()
 
@@ -70,11 +74,13 @@ def register():
             'status': 'ERROR',
             'message': 'Please fill in all fields'})
 
+    cursor.execute(SQL_GET_USER, (email))
+    user = cursor.fetchall()[0]
     cursor.close()
     return jsonify({
         'status': 'SUCCESS',
-        'message': 'Account created successfully!'})
-
+        'message': 'Account created successfully!',
+        'user': user})
 
 # Logging in a user
 @app.route('/login', methods=['POST'])
@@ -89,19 +95,21 @@ def login():
             cursor = db.cursor()
             cursor.execute(SQL_GET_USER_PASSWORD_HASH, (email))
             results = cursor.fetchall()
-            cursor.close()
-
             if len(results) > 0:
+                cursor.execute(SQL_GET_USER, (email))
+                user = cursor.fetchall()[0]
                 if sha256_crypt.verify(password, results[0][0]):
                     return jsonify({
                         'status': 'SUCCESS',
-                        'message': 'Logged in successfully!'})
+                        'message': 'Logged in successfully!',
+                        'user': user})
                 else:
                     return jsonify({
                         'status': 'ERROR',
                         'message': 'Incorrect password!'})
             else:
                 return jsonify({'message': 'User does not exist!'})
+            cursor.close()
         except:
             return jsonify({
                 'status': 'ERROR',
@@ -110,6 +118,61 @@ def login():
         return jsonify({
             'status': 'ERROR',
             'message': 'Please fill in all fields'})
+
+
+# Fetching places
+@app.route('/places', methods=['GET'])
+def get_places():
+    try:
+        cursor = db.cursor()
+        cursor.execute(SQL_GET_PLACES)
+        results = cursor.fetchall()
+        places = []
+        for result in results:
+            place = {
+                'city': result[0],
+                'country': result[1],
+                'zip': result[2],
+                'image_path': result[3],
+            }
+            places.append(place)
+        cursor.close()
+        return jsonify({
+            'status': 'SUCCESS',
+            'message': 'Successfully fetched places',
+            'places': places})
+    except:
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Failed to fetch places'})
+
+@app.route('/place', methods=['GET'])
+def get_place():
+    city = request.args.get('city')
+    if city == '':
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Please provide a valid city'})
+    try:
+        cursor = db.cursor()
+        cursor.execute(SQL_GET_PLACE, (city))
+        result = cursor.fetchall()[0]
+        place = {
+            'city': result[0],
+            'country': result[1],
+            'zip': result[2],
+            'image_path': result[3],
+        }
+        cursor.close()
+        return jsonify({
+            'status': 'SUCCESS',
+            'message': 'Successfully fetched places',
+            'place': place})
+    except:
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Failed to fetch places'})
+
 
 # Fetching a trip by id
 @app.route('/trips/<trip_id>', methods=['GET'])
@@ -147,7 +210,10 @@ def get_trip(trip_id):
             })
         trip['places_to_visit'] = places_to_visit
         cursor.close()
-        return jsonify({'status': 'SUCCESS', 'trip': trip})
+        return jsonify({
+            'status': 'SUCCESS',
+            'message': 'Trip fetched successfully!',
+            'trip': trip})
     except:
         return jsonify({
             'status': 'ERROR',
@@ -180,9 +246,8 @@ def update_trip(trip_id):
 ### @POST: Creating a new trip for a user
 @app.route('/trips', methods=['GET', 'POST'])
 def trips():
-    data = request.get_json()
     if request.method == 'GET':
-        uid = data['uid']
+        uid = request.args.get('uid')
         if (uid == ''):
             return jsonify({
                 'status': 'ERROR',
@@ -191,6 +256,10 @@ def trips():
             cursor = db.cursor()
             cursor.execute(SQL_GET_TRIPS, (uid))
             results = cursor.fetchall()
+            if len(results) == 0:
+                return jsonify({
+                    'status': 'ERROR',
+                    'message': 'No trips found'})
             cursor.close()
             trips = []
             for row in results:
@@ -207,14 +276,18 @@ def trips():
                     'hotel_phone': row[9],
                 })
 
-            return jsonify({'status': 'SUCCESS', 'trips': trips})
+            return jsonify({
+                'status': 'SUCCESS',
+                'message': 'Trips found!',
+                'trips': trips})
         except:
             return jsonify({
                 'status': 'ERROR',
                 'message': 'Failed to fetch trips!'})
     elif request.method == 'POST':
+        data = request.get_json()
         uid = data['uid']
-        trips = data['trips']
+        # trip = data['trip']
         trip_id = str(uuid.uuid4())
         if (uid == '' and trips == None):
             return jsonify({
@@ -222,18 +295,18 @@ def trips():
                 'message': 'Please provide a valid user id and trip details'
             })
         # trip details
-        place_name = trips['place_name']
-        start_date = trips['start_date']
-        end_date = trips['end_date']
-        flight_number_arrival = trips['flight_number_arrival']
-        flight_number_departure = trips['flight_number_departure']
-        hotel_name = trips['hotel_name']
-        hotel_address = trips['hotel_address']
-        hotel_phone = trips['hotel_phone']
+        place_name = data['place_name']
+        start_date = data['start_date']
+        end_date = data['end_date']
+        flight_number_arrival = data['flight_number_arrival']
+        flight_number_departure = data['flight_number_departure']
+        hotel_name = data['hotel_name']
+        hotel_address = data['hotel_address']
+        hotel_phone = data['hotel_phone']
         places_to_visit_id = str(uuid.uuid4())
         # places to visit
-        places_to_visit_name = trips['places_to_visit'][0]['name']
-        places_to_visit_note = trips['places_to_visit'][0]['note']
+        places_to_visit_name = data['places_to_visit_name']
+        places_to_visit_note = data['places_to_visit_note']
         cursor = db.cursor()
         # Store trip in SQL
         cursor.execute(SQL_INSERT_TRIP,
@@ -247,9 +320,28 @@ def trips():
                         uid,
                         places_to_visit_name,
                         places_to_visit_note))
+        trip = {
+            'id': trip_id,
+            'uid': uid,
+            'place_name': place_name,
+            'start_date': start_date,
+            'end_date': end_date,
+            'flight_number_arrival': flight_number_arrival,
+            'flight_number_departure': flight_number_departure,
+            'hotel_name': hotel_name,
+            'hotel_address': hotel_address,
+            'hotel_phone': hotel_phone,
+            'places_to_visit': [{
+                'name': places_to_visit_name,
+                'note': places_to_visit_note
+            }]
+        }
         db.commit()
         return jsonify({
-            'status': 'SUCCESS', 'message': 'Trip created successfully!', 'trip_id': trip_id})
+            'status': 'SUCCESS',
+            'message': 'Trip created successfully!',
+            'trip_id': trip_id,
+            'trip': trip})
 
 
 # Check if username or email are already taken
@@ -257,7 +349,7 @@ def user_exists(email):
     try:
         cursor = db.cursor()
         # Store user in SQL
-        cursor.execute(SQL_CHECK_IF_USER_EXISTS, (email))
+        cursor.execute(SQL_GET_USER, (email))
         results = cursor.fetchall()
     except:
         db.rollback()
@@ -268,31 +360,32 @@ def user_exists(email):
         return False
 
 
-# Connect to Linode's object storage
-linode_obj_config = {
-    "aws_access_key_id": OBJECT_STORAGE_KEY_ID,
-    "aws_secret_access_key": OBJECT_STORAGE_KEY_SECRET,
-    "endpoint_url": OBJECT_STORAGE_CLUSTER_URL,
-}
-s3 = boto3.client('s3',**linode_obj_config)
-s3 = boto3.resource('s3')
+s3 = boto3.client('s3',
+                region_name='ap-south-1',
+                aws_access_key_id=OBJECT_STORAGE_KEY_ID,
+                aws_secret_access_key=OBJECT_STORAGE_KEY_SECRET,
+                endpoint_url=OBJECT_STORAGE_CLUSTER_URL)
 
 @app.route('/store_file', methods=['POST'])
 def store_file():
-    data = request.get_json()
-    # Need to pass file, file_name, file_type
-    if 'file' in data:
-        unique_str = str(uuid.uuid4())
-        file_name = data['file_name'] + f"_{unique_str}"+ '.' + data['file_type']
-        try:
-            s3.upload_file(data['file'], BUCKET_NAME, file_name)
-            return jsonify({
-                'status': 'SUCCESS',
-                'message': 'File stored successfully!', 'file_name': file_name})
-        except:
-            return jsonify({
+    file = request.files['file']
+    # Need to pass file
+    if file is None:
+        return jsonify({
                 'status': 'ERROR',
-                'message': 'Failed to store file!'})
+                'message': 'No file present!'})
+    unique_str = str(uuid.uuid4())
+    file_name = file.filename + f"_{unique_str}"+ '.pdf'
+    try:
+        s3.upload_file(file, BUCKET_NAME, file_name)
+        return jsonify({
+            'status': 'SUCCESS',
+            'message': 'File stored successfully!', 'file_name': file.filename})
+    except:
+        return jsonify({
+            'status': 'ERROR',
+            'message': 'Failed to store file!'})
+        
 
 @app.route('/get_file', methods=['GET'])
 def get_file():
@@ -308,7 +401,6 @@ def get_file():
             return jsonify({
                 'status': 'ERROR',
                 'message': 'Failed to retrieve file!'})
-
 
 
 @app.route('/')

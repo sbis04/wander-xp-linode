@@ -1,5 +1,7 @@
 #!/bin/bash
 export DB_PASSWORD="$1"
+export OBJECT_STORAGE_KEY_ID="$2"
+export OBJECT_STORAGE_KEY_SECRET="$3"
 
 g_pid=$GUNICORN_PROCESS_ID
 a_pid=$APP_PROCESS_ID
